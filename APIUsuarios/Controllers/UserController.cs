@@ -44,69 +44,38 @@ namespace APIUsuarios.Controllers
 
         }
 
-        // POST api/<MedicoController> //GUARDAR INFORMACION
+        // POST api/<UserController> //GUARDAR INFORMACION
         [HttpPost]
-        public async Task<IActionResult> Post([FromBody] Cita cita)
+        public async Task<IActionResult> Post([FromBody] User user) //Se guarda igual con un objeto
         {
-            // Verificar si ya existe una cita para el médico en la misma hora
-            var existingCita = await _db.Citas.FirstOrDefaultAsync(x => x.IdMedico == cita.IdMedico && x.Hora == cita.Hora);
-            if (existingCita != null)
+            User usuarioEncontrado = await _db.Users.FirstOrDefaultAsync(x => x.IdUsuario == user.IdUsuario); //Primero buscamos si ya existe un USUARIO con ese ID
+            if (usuarioEncontrado == null && user != null) //Si no hay un usuario con el mismo ID y es diferente de nul, se guarda
             {
-                return BadRequest("El médico ya tiene una cita programada a la misma hora.");
-            }
-
-            // Obtener el ID de Medico y Usuario a través de tus funciones o lógica específica
-            var medicoId = cita.IdMedico; // Asegúrate de tener el ID de médico en la cita
-            var usuarioId = cita.IdUsuario; // Asegúrate de tener el ID de usuario en la cita
-
-            Cita citaEncontrada = await _db.Citas.FirstOrDefaultAsync(x => x.IdCita == cita.IdCita);
-
-            if (citaEncontrada == null && cita != null)
-            {
-                // Asignar el ID de Medico y Usuario
-                cita.IdMedico = medicoId;
-                cita.IdUsuario = usuarioId;
-
-                await _db.Citas.AddAsync(cita);
+                await _db.Users.AddAsync(user);//Proceso para guardado
                 await _db.SaveChangesAsync();
-                return Ok(cita);
+                return Ok(user);
             }
 
-            return BadRequest("No se pudo crear la cita");
+            //**usuarioEncontrado** es una variable local por ello solo se encuentra en el metodo que se la declara
+
+            return BadRequest("No se pudo crear el usuario");
         }
 
 
-        // PUT api/<MedicoController>/5 //Actualizar
-        [HttpPut("{IdCita}")]
-        public async Task<IActionResult> Put(int IdCita, [FromBody] Cita cita)
+        // PUT api/<UsuarioController>/5 //Actualizar
+        [HttpPut("{IdUsuario}")]
+        public async Task<IActionResult> Put(int IdUsuario, [FromBody] User user) //PUT, POST Y DELETE se lleva los datos en la URL como parametros, FromDody los datos se mandan los datos en el cuerpo del mensaje.
         {
-            // Verificar si ya existe una cita para el médico en la misma hora
-            var existingCita = await _db.Citas.FirstOrDefaultAsync(x => x.IdMedico == cita.IdMedico && x.Hora == cita.Hora && x.IdCita != IdCita);
-            if (existingCita != null)
+            User usuarioEncontrado = await _db.Users.FirstOrDefaultAsync(x => x.IdUsuario == IdUsuario); //Primero buscamos si ya existe un USUARIO con ese ID
+            if (usuarioEncontrado != null)
             {
-                return BadRequest("El médico ya tiene una cita programada a la misma hora.");
-            }
+                usuarioEncontrado.Correo = user.Correo != null ? user.Correo : usuarioEncontrado.Correo; //Se valida que no es nulo, caso contrario se queda con el mismo
+                usuarioEncontrado.Clave = user.Clave != null ? user.Clave : usuarioEncontrado.Clave;//lo mismo
 
-            // Obtener el ID de Medico y Usuario a través de tus funciones o lógica específica
-            var medicoId = cita.IdMedico; // Asegúrate de tener el ID de médico en la cita
-            var usuarioId = cita.IdUsuario; // Asegúrate de tener el ID de usuario en la cita
 
-            Cita citaEncontrada = await _db.Citas.FirstOrDefaultAsync(x => x.IdCita == IdCita);
-
-            if (citaEncontrada != null)
-            {
-                citaEncontrada.Fecha = cita.Fecha != null ? cita.Fecha : citaEncontrada.Fecha;
-                citaEncontrada.Hora = cita.Hora != null ? cita.Hora : citaEncontrada.Hora;
-
-                citaEncontrada.Descripcion = cita.Descripcion != null ? cita.Descripcion : citaEncontrada.Descripcion;
-
-                // Actualizar los IDs de Medico y Usuario
-                citaEncontrada.IdMedico = medicoId;
-                citaEncontrada.IdUsuario = usuarioId;
-
-                _db.Citas.Update(citaEncontrada);
+                _db.Users.Update(usuarioEncontrado);
                 await _db.SaveChangesAsync();
-                return Ok(citaEncontrada);
+                return Ok(usuarioEncontrado);
             }
             return BadRequest();
         }
@@ -134,22 +103,48 @@ namespace APIUsuarios.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
-            string username = request.Correo;
-            string password = request.Clave;
-
-            User usuario = await _db.Users.FirstOrDefaultAsync(x => x.Correo == username && x.Clave == password);
-
-            if (usuario != null)
+            try
             {
-                // Inicio de sesión exitoso
-                return Redirect("/Home/Index"); // Cambia la ruta a la página de inicio de tu aplicación
+                string username = request.Correo;
+                string password = request.Clave;
+
+                User usuario = await _db.Users.FirstOrDefaultAsync(x => x.Correo == username && x.Clave == password);
+
+                if (usuario != null)
+                {
+                    // Inicio de sesión exitoso
+                    return Ok(new { message = "Inicio de sesión exitoso", usuario.IdUsuario });
+                }
+                else
+                {
+                    // Credenciales inválidas, el usuario no existe o la contraseña es incorrecta
+                    return Unauthorized(new { message = "Credenciales inválidas. Intente nuevamente." });
+                }
             }
-            else
+            catch (Exception ex)
             {
-                // Credenciales inválidas, el usuario no existe o la contraseña es incorrecta
-                return BadRequest("Credenciales inválidas. Intente nuevamente.");
+                // Manejo de errores
+                return StatusCode(500, new { message = "Error interno del servidor." });
             }
         }
+
+        [HttpGet("{IdUsuario}/citas")]
+        public IActionResult GetCitasByUsuario(int IdUsuario)
+        {
+            try
+            {
+                var citas = _db.Citas.Where(c => c.IdUsuario == IdUsuario).ToList();
+                return Ok(citas);
+            }
+            catch (Exception ex)
+            {
+
+                // Devuelve un mensaje de error detallado al cliente
+                return StatusCode(500, $"Error interno del servidor: {ex.Message}");
+            }
+        }
+
+
 
 
     }
